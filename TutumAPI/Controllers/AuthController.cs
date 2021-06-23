@@ -6,8 +6,9 @@ using System.Threading.Tasks;
 
 namespace TutumAPI.Controllers
 {
+    [Route("api/[controller]")]
     [ApiController]
-    public class PostsController
+    public class AuthController : Controller
     {
     }
 }
