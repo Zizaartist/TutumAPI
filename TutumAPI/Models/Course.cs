@@ -45,7 +45,6 @@ namespace TutumAPI.Models
         [NotMapped]
         public IFormFile PreviewFile { get; set; }
 
-        //Только десериализация
-        //public bool ShouldSerializePreviewFile() => false;
+        public bool ShouldSerializePreviewFile() => false;
     }
 }

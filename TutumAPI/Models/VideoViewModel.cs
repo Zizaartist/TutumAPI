@@ -14,6 +14,7 @@ namespace TutumAPI.Models
         public string FileName { get; set; }
         [Display(Name = "Превью")]
         public string PreviewPath { get; set; }
+        [Display(Name = "Видео файл")]
         public string VideoPath { get; set; }
     }
 }

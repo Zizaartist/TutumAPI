@@ -144,7 +144,8 @@ namespace TutumAPI.Controllers.FrequentlyUsed
                 new Job
                 {
                     Input = jobInput,
-                    Outputs = jobOutputs
+                    Outputs = jobOutputs,
+                    CorrelationData = new Dictionary<string, string> { { "inputAssetName", inputAssetName } }
                 });
         }
 

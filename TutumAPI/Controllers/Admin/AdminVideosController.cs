@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http.Features;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Azure.Management.Media;
@@ -7,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Net.Http.Headers;
 using Microsoft.Rest.Azure.OData;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
@@ -19,6 +21,7 @@ using TutumAPI.Models;
 
 namespace TutumAPI.Controllers.Admin
 {
+    [Authorize(Roles = "Admin")]
     public class AdminVideosController : Controller
     {
         private readonly ConfigWrapper _config;
@@ -52,33 +55,55 @@ namespace TutumAPI.Controllers.Admin
         private async Task<VideoViewModel> ModelFromLocatorAsync(StreamingLocator input, IAzureMediaServicesClient _client)
         {
             var paths = await _client.StreamingLocators.ListPathsAsync(_config.ResourceGroup, _config.AccountName, input.Name);
+            return ModelFromLocatorAsync(paths, input.AssetName);
+        }
+
+        private async Task<VideoViewModel> ModelFromLocatorAsync(AssetStreamingLocator input, IAzureMediaServicesClient _client)
+        {
+            var paths = await _client.StreamingLocators.ListPathsAsync(_config.ResourceGroup, _config.AccountName, input.Name);
+            return ModelFromLocatorAsync(paths, input.AssetName);
+        }
+
+        private VideoViewModel ModelFromLocatorAsync(ListPathsResponse paths, string assetName)
+        {
             var newVM = new VideoViewModel
             {
-                FileName = input.AssetName,
+                FileName = assetName,
                 PreviewPath = paths.DownloadPaths.FirstOrDefault(path => path.EndsWith(".jpg")),
                 VideoPath = paths.DownloadPaths.FirstOrDefault(path => path.EndsWith(".mp4"))
             };
             return newVM;
         }
 
+        private async Task<VideoViewModel> ModelFromAssetName(string assetName)
+        {
+            var client = await AzureHelper.CreateMediaServicesClientAsync(_config);
+            var result = await client.Assets.ListStreamingLocatorsAsync(_config.ResourceGroup, _config.AccountName, assetName);
+
+            if (!result.StreamingLocators.Any())
+            {
+                return null;
+            }
+
+            var sLocator = result.StreamingLocators.First();
+            var videoViewModel = await ModelFromLocatorAsync(sLocator, client);
+            return videoViewModel;
+        }
+
         // GET: AdminVideos/Details/5
-        public async Task<IActionResult> Details([Required] string id)
+        public async Task<IActionResult> Details(string id)
         {
             if (id == null)
             {
-                return NotFound();
+                return NotFound(); 
             }
 
-            var client = await AzureHelper.CreateMediaServicesClientAsync(_config);
-            var result = await client.StreamingLocators.ListAsync(_config.ResourceGroup, _config.AccountName, new ODataQuery<StreamingLocator>(e => e.AssetName == id));
+            var videoViewModel = await ModelFromAssetName(id);
 
-            if (!result.Any())
+            if (videoViewModel == null) 
             {
                 return NotFound();
             }
-
-            var sLocator = result.First();
-            var videoViewModel = ModelFromLocatorAsync(sLocator, client);
 
             return View(videoViewModel);
         }
@@ -93,9 +118,8 @@ namespace TutumAPI.Controllers.Admin
         // To protect from overposting attacks, enable the specific properties you want to bind to.
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
-        [ValidateAntiForgeryToken]
         [DisableRequestSizeLimit]
-        public async Task<IActionResult> Create(int trashParam)
+        public async Task<IActionResult> CreateBigFile()
         {
             //Какая-то проверка
             if (!MultipartRequestHelper.IsMultipartContentType(Request.ContentType))
@@ -113,7 +137,8 @@ namespace TutumAPI.Controllers.Admin
                 _defaultFormOptions.MultipartBoundaryLengthLimit);
             //Создаем читателя и читаем 1й фрагмент
             var reader = new MultipartReader(boundary, HttpContext.Request.Body);
-            var section = await reader.ReadNextSectionAsync();
+
+            MultipartSection section = await reader.ReadNextSectionAsync();
 
             List<string> urls = new List<string>();
 
@@ -163,24 +188,25 @@ namespace TutumAPI.Controllers.Admin
 
                 section = await reader.ReadNextSectionAsync();
             }
-            return RedirectToAction(nameof(Index));
+            return Ok();
         }
 
         // GET: AdminVideos/Edit/5
-        public async Task<IActionResult> Edit(int? id)
+        public async Task<IActionResult> Edit(string id)
         {
-            //if (id == null)
-            //{
-            //    return NotFound();
-            //}
+            if (id == null)
+            {
+                return NotFound();
+            }
 
-            //var videoViewModel = await _context.VideoFile.FindAsync(id);
-            //if (videoViewModel == null)
-            //{
-            //    return NotFound();
-            //}
-            //return View(videoViewModel);
-            return NotFound();
+            var videoViewModel = await ModelFromAssetName(id);
+
+            if (videoViewModel == null)
+            {
+                return NotFound();
+            }
+
+            return View(videoViewModel);
         }
 
         // POST: AdminVideos/Edit/5
@@ -220,32 +246,31 @@ namespace TutumAPI.Controllers.Admin
         }
 
         // GET: AdminVideos/Delete/5
-        public async Task<IActionResult> Delete(int? id)
+        public async Task<IActionResult> Delete(string id)
         {
-            //if (id == null)
-            //{
-            //    return NotFound();
-            //}
+            if (id == null)
+            {
+                return NotFound();
+            }
 
-            //var videoViewModel = await _context.VideoFile
-            //    .FirstOrDefaultAsync(m => m.PrimaryKey == id);
-            //if (videoViewModel == null)
-            //{
-            //    return NotFound();
-            //}
+            var videoViewModel = await ModelFromAssetName(id);
 
-            //return View(videoViewModel);
-            return NotFound();
+            if (videoViewModel == null)
+            {
+                return NotFound();
+            }
+
+            return View(videoViewModel);
         }
 
         // POST: AdminVideos/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
+        public async Task<IActionResult> DeleteConfirmed(string id)
         {
-            //var videoViewModel = await _context.VideoFile.FindAsync(id);
-            //_context.VideoFile.Remove(videoViewModel);
-            //await _context.SaveChangesAsync();
+            var client = await AzureHelper.CreateMediaServicesClientAsync(_config);
+            await client.Assets.DeleteAsync(_config.ResourceGroup, _config.AccountName, id);
+
             return RedirectToAction(nameof(Index));
         }
 
@@ -259,11 +284,11 @@ namespace TutumAPI.Controllers.Admin
             var client = await AzureHelper.CreateMediaServicesClientAsync(_config);
 
             var inputAsset = await AzureHelper.CreateInputAssetAsync(client, resourceGroup, accountName, fileName, stream);
-            var outputAsset = await AzureHelper.CreateOutputAssetAsync(client, resourceGroup, accountName, fileName);
+            var outputAsset = await AzureHelper.CreateOutputAssetAsync(client, resourceGroup, accountName, $"{fileName}output");
 
             var transform = await AzureHelper.GetOrCreateTransformAsync(client, resourceGroup, accountName, transformName);
 
-            await AzureHelper.SubmitJobAsync(client, resourceGroup, accountName, transform.Name, $"{fileName}Encoding", inputAsset.Name, outputAsset.Name);
+            await AzureHelper.SubmitJobAsync(client, resourceGroup, accountName, transform.Name, $"{fileName}encoding", inputAsset.Name, outputAsset.Name);
         }
     }
 }

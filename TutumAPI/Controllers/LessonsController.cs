@@ -21,6 +21,7 @@ namespace TutumAPI.Controllers
             _context = context;
         }
 
+        // GET: api/Lessons/ByCourse/3
         [HttpGet("{id}")]
         public ActionResult<IEnumerable<Lesson>> GetLessonsByCourse(int id)
         {
@@ -40,6 +41,28 @@ namespace TutumAPI.Controllers
             var result = lessons.ToList();
 
             return result;
+        }
+
+        // GET: api/Lessons/3
+        [HttpGet("{id}")]
+        public ActionResult<Lesson> GetLesson(int id)
+        {
+            var myId = int.Parse(User.Identity.Name);
+
+            //Если модель подписки еще не удалена - премиум активен
+            var doIHaveSubscription = _context.Users.Include(user => user.Subscription)
+                                                    .FirstOrDefault(user => user.UserId == myId).Subscription != null;
+
+            var lesson = _context.Lessons.FirstOrDefault(lesson => lesson.LessonId == id && (!lesson.Course.IsPremiumOnly || doIHaveSubscription));
+
+            if (lesson == null)
+            {
+                return NotFound();
+            }
+
+            lesson.ShowAllData = true;
+
+            return lesson;
         }
     }
 }

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 #nullable disable
 
@@ -31,5 +32,13 @@ namespace TutumAPI.Models
 
         [JsonIgnore]
         public virtual Course Course { get; set; }
+
+        public bool ShouldSerializeCourseId() => false;
+        public bool ShouldSerializeText() => ShowAllData;
+        public bool ShouldSerializeVideoPath() => ShowAllData;
+
+        [JsonIgnore]
+        [NotMapped]
+        public bool ShowAllData = false;
     }
 }
