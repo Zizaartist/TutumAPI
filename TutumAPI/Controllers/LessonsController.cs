@@ -22,7 +22,8 @@ namespace TutumAPI.Controllers
         }
 
         // GET: api/Lessons/ByCourse/3
-        [HttpGet("{id}")]
+        [Route("ByCourse/{id}")]
+        [HttpGet]
         public ActionResult<IEnumerable<Lesson>> GetLessonsByCourse(int id)
         {
             var myId = int.Parse(User.Identity.Name);
