@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +13,13 @@ namespace TutumAPI.Helpers
 {
     public class Functions
     {
+        private readonly IMemoryCache _cache;
+
+        public Functions(IMemoryCache cache)
+        {
+            _cache = cache;
+        }
+
         private static List<Type> allowedTypes = new List<Type>() { typeof(int?),
                                                             typeof(string),
                                                             typeof(decimal),
@@ -86,6 +95,55 @@ namespace TutumAPI.Helpers
             //Если в начале нет 7 или 8 - вставить код самому. Пока плевать на интернационализацию
             return "7" + ((processedNumber.StartsWith("7") || processedNumber.StartsWith("8")) ?
                                         processedNumber.Substring(1) : processedNumber);
+        }
+
+        /// <summary>
+        /// Проверяет соответствие кода из кэша с полученным от пользователя
+        /// </summary>
+        /// <param name="key">Ключ кэша - отформатированный телефон пользователя</param>
+        /// <returns>Строка ошибки, null в случае успеха</returns>
+        public string ValidateCode(string key, string code)
+        {
+            string localCode;
+
+            if (!_cache.TryGetValue(key, out localCode))
+            {
+                return "Ошибка при извлечении из кэша.";
+            }
+
+            if (localCode == null)
+            {
+                return "Устаревший или отсутствующий код.";
+            }
+            else
+            {
+                if (localCode != code)
+                {
+                    return "Ошибка. Получен неверный код. Подтвердите номер еще раз.";
+                }
+            }
+            return null;
+        }
+
+        public byte[] GenerateSalt()
+        {
+            byte[] salt = new byte[128 / 8];
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(salt);
+            }
+            return salt;
+        }
+
+        public string SprinkleSomeSalt(string password, byte[] salt)
+        {
+            string hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
+               password: password,
+               salt: salt,
+               prf: KeyDerivationPrf.HMACSHA1,
+               iterationCount: 10000,
+               numBytesRequested: 256 / 8));
+            return hashed;
         }
     }
 }

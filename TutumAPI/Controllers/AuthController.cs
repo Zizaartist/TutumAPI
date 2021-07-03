@@ -26,13 +26,15 @@ namespace TutumAPI.Controllers
         private readonly IConfiguration _config;
         private readonly IMemoryCache _cache;
         private readonly IHttpClientFactory _clientFactory;
+        private readonly Functions _functions;
 
-        public AuthController(DatabaseContext context, IConfiguration config, IMemoryCache cache, IHttpClientFactory clientFactory)
+        public AuthController(DatabaseContext context, IConfiguration config, IMemoryCache cache, IHttpClientFactory clientFactory, Functions functions)
         {
             _context = context;
             _config = config;
             _cache = cache;
             _clientFactory = clientFactory;
+            _functions = functions;
         }
 
         // POST: api/Auth/Login
@@ -48,7 +50,7 @@ namespace TutumAPI.Controllers
             }
             //Если пользователь с таким номером был найден - проверить пароль
             var salt = existingUser.Salt;
-            var hashedPassword = SprinkleSomeSalt(credentials.Password, existingUser.Salt);
+            var hashedPassword = _functions.SprinkleSomeSalt(credentials.Password, existingUser.Salt);
 
             if (existingUser.Password != hashedPassword) 
             {
@@ -73,27 +75,6 @@ namespace TutumAPI.Controllers
             return encodedJwt;
         }
 
-        private byte[] GenerateSalt() 
-        {
-            byte[] salt = new byte[128 / 8];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(salt);
-            }
-            return salt;
-        }
-        
-        private string SprinkleSomeSalt(string password, byte[] salt) 
-        {
-            string hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
-               password: password,
-               salt: salt,
-               prf: KeyDerivationPrf.HMACSHA1,
-               iterationCount: 10000,
-               numBytesRequested: 256 / 8));
-            return hashed;
-        }
-
         // POST: api/Auth/Register?code={code}
         [Route("Register")]
         [HttpPost]
@@ -102,7 +83,7 @@ namespace TutumAPI.Controllers
             var formattedPhone = Functions.convertNormalPhoneNumber(userData.Phone);
 
             //Проверка кода СМС
-            var codeValidationErrorText = ValidateCode(formattedPhone, code);
+            var codeValidationErrorText = _functions.ValidateCode(formattedPhone, code);
             if (codeValidationErrorText != null)
             {
                 return BadRequest(new { errorText = codeValidationErrorText });
@@ -115,8 +96,8 @@ namespace TutumAPI.Controllers
                 return Forbid();
             }
 
-            userData.Salt = GenerateSalt();
-            userData.Password = SprinkleSomeSalt(userData.Password, userData.Salt);
+            userData.Salt = _functions.GenerateSalt();
+            userData.Password = _functions.SprinkleSomeSalt(userData.Password, userData.Salt);
 
             _context.Users.Add(userData);
             _context.SaveChanges();
@@ -133,14 +114,17 @@ namespace TutumAPI.Controllers
         // POST: api/Auth/SmsCheck/?phone=79991745473
         [Route("SmsCheck")]
         [HttpPost]
-        public async Task<IActionResult> SmsCheck([Phone] string phone)
+        public async Task<IActionResult> SmsCheck([Phone] string phone, bool registrationCheck = false)
         {
             string PhoneLoc = Functions.convertNormalPhoneNumber(phone);
 
-            var existingUser = _context.Users.FirstOrDefault(user => user.Phone == PhoneLoc);
-            if(existingUser != null) 
+            if (registrationCheck)
             {
-                return BadRequest(new { errorText = "Пользователь с таким номером уже существует. Пожалуйста, авторизуйтесь." });
+                var existingUser = _context.Users.FirstOrDefault(user => user.Phone == PhoneLoc);
+                if (existingUser != null)
+                {
+                    return BadRequest(new { errorText = "Пользователь с таким номером уже существует. Пожалуйста, авторизуйтесь." });
+                }
             }
 
             Random rand = new Random();
@@ -172,34 +156,6 @@ namespace TutumAPI.Controllers
             }
 
             return Ok();
-        }
-
-        /// <summary>
-        /// Проверяет соответствие кода из кэша с полученным от пользователя
-        /// </summary>
-        /// <param name="key">Ключ кэша - отформатированный телефон пользователя</param>
-        /// <returns>Строка ошибки, null в случае успеха</returns>
-        private string ValidateCode(string key, string code)
-        {
-            string localCode;
-
-            if (!_cache.TryGetValue(key, out localCode))
-            {
-                return "Ошибка при извлечении из кэша.";
-            }
-
-            if (localCode == null)
-            {
-                return "Устаревший или отсутствующий код.";
-            }
-            else
-            {
-                if (localCode != code)
-                {
-                    return "Ошибка. Получен неверный код. Подтвердите номер еще раз.";
-                }
-            }
-            return null;
         }
 
         ///// <summary>

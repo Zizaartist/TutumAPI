@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 using System.Text;
+using TutumAPI.Helpers;
 
 namespace TutumAPI
 {
@@ -47,6 +48,7 @@ namespace TutumAPI
 
             services.AddMemoryCache();
             services.AddHttpClient();
+            services.AddScoped<Functions>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
